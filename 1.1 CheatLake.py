@@ -1,0 +1,132 @@
+import requests
+import re
+import pandas as pd
+from io import StringIO
+from bs4 import BeautifulSoup
+
+
+
+# Source 1: Lake Water Level (USGS)
+
+# Read URLs from the csv list, create function to get them
+urls_df = pd.read_csv('1.0 URLs.csv')
+
+def get_url_by_index(index):
+    url = urls_df.loc[urls_df['index'] == index, 'url'].values[0]
+    return url
+
+# Date Parameters for URL
+date1 = pd.Timestamp.now()
+date2 = date1 - pd.Timedelta(days=2)
+
+dates = pd.Series([date1, date2]).astype(str)
+dates = dates.str.slice(0,23)
+dates = dates.str.replace(' ', 'T')
+
+# USGS link for last 48h
+url_usgs = get_url_by_index(0)
+url_usgs = url_usgs.replace('date1', dates[0]).replace('date2', dates[1])
+
+# Get URL content
+response_usgs = requests.get(url_usgs)
+
+# Load text if request was successful
+if response_usgs.status_code == 200:
+    text_content = response_usgs.text
+    print("Request successful")
+else:
+    print("Request failed. Status code: {response.status_code}")
+
+# Trim string down to just the data
+data_start = "agency_cd"
+start_index = text_content.find(data_start)
+
+text_data = text_content[start_index:]
+text_data = StringIO(text_data)
+
+usgs_data = pd.read_csv(text_data, delimiter='\t')
+usgs_data = usgs_data[usgs_data['agency_cd'] != '5s']
+
+# Final column adjustments
+usgs_data = usgs_data[['datetime', '160548_62614']]
+usgs_data = usgs_data.rename(columns={'160548_62614': 'surface_level'})
+usgs_data['surface_level'] = usgs_data['surface_level'].astype(float)
+
+
+
+
+# Source 2: Weather Data (NOAA)
+
+# Weather data URL (no parameters needed)
+url_noaa = get_url_by_index(1)
+
+# Get URL content
+response_noaa = requests.get(url_noaa)
+
+# Load HTML data if request was successful
+if response_noaa.status_code == 200:
+    html_content = response_noaa.text
+    print("Request successful")
+else:
+    print("Request failed. Status code: {response.status_code}")
+
+# Parse with bs4
+html_parsed = BeautifulSoup(html_content, 'html.parser')
+table = html_parsed.find('table', class_='obs-history')
+table_data = []
+
+tbody = table.find('tbody')
+
+for row in tbody.find_all('tr'):
+            cells = row.find_all('td')
+            row_data = [cell.text for cell in cells]
+            table_data.append(row_data)
+
+# Save to df and format
+noaa_data = pd.DataFrame(table_data)
+noaa_data = noaa_data.iloc[:, [0, 1, 2, 6, 13]]
+noaa_data.columns = ['Day', 'Time', 'Wind', 'Temp', 'Pressure']
+
+noaa_data['Day'] = noaa_data['Day'].str.pad(width=2, side='left', fillchar='0')
+
+# Fix date values
+today = pd.Timestamp.now()
+today_year = today.strftime('%Y')
+today_month = today.strftime('%m')
+today_day = noaa_data.iloc[0]['Day']
+today_time = noaa_data.iloc[0]['Time']
+date_string = f"{today_year}-{today_month}-{today_day} {today_time}:00"
+today_datetime = pd.to_datetime(date_string)
+
+# Create a new datetime column, fill in values by hour
+noaa_data['Date'] = pd.NaT
+noaa_data.loc[0, 'Date'] = today_datetime
+
+date_subtract = today_datetime
+
+for i in range(1, len(noaa_data)):
+     date_subtract = date_subtract - pd.Timedelta(hours=1)
+     noaa_data.loc[i, 'Date'] = date_subtract
+
+# Clean up the values for wind
+noaa_data['Wind'] = noaa_data['Wind'].astype(str)
+
+def wind_fix(wind_value):
+    """Function to fix formatting of wind values"""
+    if isinstance(wind_value, str):
+        if "Calm" in wind_value:
+            return "0"
+        elif "G" in wind_value:  # Remove gust info
+            return ''.join(filter(str.isdigit, wind_value.split("G")[0].strip()))
+        else:  # Keep only numeric chars
+            return ''.join(filter(str.isdigit, wind_value))
+    return wind_value
+
+noaa_data['Wind'] = noaa_data['Wind'].apply(wind_fix)
+
+# Final column adjustments
+noaa_data = noaa_data.drop(columns=['Day', 'Time'])
+noaa_data['Wind'] = noaa_data['Wind'].astype(int)
+noaa_data['Temp'] = noaa_data['Temp'].astype(float)
+noaa_data['Pressure'] = noaa_data['Pressure'].astype(float)
+
