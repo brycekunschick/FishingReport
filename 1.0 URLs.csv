@@ -2,3 +2,4 @@ index,url
 0,https://waterservices.usgs.gov/nwis/iv/?sites=03071590&agencyCd=USGS&startDT=date2-04:00&endDT=date1-04:00&parameterCd=62614&format=rdb
 1,https://forecast.weather.gov/data/obhistory/KMGW.html
 2,https://waterservices.usgs.gov/nwis/iv/?sites=03062250&agencyCd=USGS&startDT=date2-04:00&endDT=date1-04:00&parameterCd=00065&format=rdb
+3,https://waterservices.usgs.gov/nwis/iv/?sites=03062500&agencyCd=USGS&startDT=date2-04:00&endDT=date1-04:00&parameterCd=00065&format=rdb
