@@ -51,3 +51,4 @@ usgs_data = usgs_data.rename(columns={'160485_00065': 'surface_level'})
 usgs_data['surface_level'] = usgs_data['surface_level'].astype(float)
 
 # Create variable for 24h water level change
+ 
