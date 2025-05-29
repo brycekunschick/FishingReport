@@ -3,6 +3,9 @@ import re
 import pandas as pd
 from io import StringIO
 from bs4 import BeautifulSoup
+import ollama
+from ollama import chat
+from ollama import ChatResponse
 
 
 
@@ -41,6 +44,7 @@ else:
 data_start = "agency_cd"
 start_index = text_content.find(data_start)
 
+# Read the string as a csv
 text_data = text_content[start_index:]
 text_data = StringIO(text_data)
 
@@ -130,3 +134,49 @@ noaa_data['Wind'] = noaa_data['Wind'].astype(int)
 noaa_data['Temp'] = noaa_data['Temp'].astype(float)
 noaa_data['Pressure'] = noaa_data['Pressure'].astype(float)
 
+
+
+# 3. Prepare variables for LLM
+
+# 48h change in Water Level
+surface_level_48h = usgs_data.iloc[-1]['surface_level'] - usgs_data.iloc[0]['surface_level']
+
+# Current wind speeds
+wind_speed = noaa_data.iloc[0]['Wind']
+
+# Current barometric pressure
+bar_pressure = noaa_data.iloc[0]['Pressure']
+
+# 24h change in temperature
+temp_24h = noaa_data.iloc[0]['Temp'] - noaa_data.iloc[23]['Temp']
+temp_24h = round(temp_24h)
+
+
+
+# 4. Generate fishing report with data input to LLM
+
+ollama.pull(model='gemma3:4b')
+
+prompt = f"""
+Here is live data related to fishing near Morgantown, WV:
+
+Water Level Change (last 48 hours): {surface_level_48h:.2f} feet. Favorable if increasing.
+Current Wind Speed: {wind_speed} mph. Favorable if low.
+Current Barometric Pressure: {bar_pressure:.2f} inHg. Favorable if between 29.7 and 30.4.
+Temperature Change (last 24 hours): {temp_24h} degrees F. Favorable if stable or rising.
+
+Based on the data:
+1. List each variable and indicate if it is favorable or unfavorable for fishing
+2. Write a 3-5 sentence fishing report about the conditions and fishing outlook
+"""
+
+response: ChatResponse = chat(model='gemma3:4b', messages=[
+  {
+    'role': 'user',
+    'content': prompt,
+  },
+])
+
+fishing_report = response['message']['content']
+print("\n--- Fishing Report ---")
+print(fishing_report)
